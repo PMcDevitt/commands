@@ -1,0 +1,259 @@
+﻿https://PMcDevitt@github.com/PMcDevitt/problemSet8.git
+
+Accpetance Testing
+
+npm install -g protractor
+npm install --save-dev mocha chai protractor
+mkdir -p test/acceptance
+
+Objectives
+Write acceptance tests for Express applications
+Explain the difference between unit, integration, and end to end tests
+Activities
+In this lesson, you will use Protractor to write acceptance (sometimes known as end to end) tests. Before continuing, we should better define the different layers of testing:
+
+Unit - Tests of a single method of a class or individual function. These tests should be done entirely in memory.
+Integration - Tests of more than one unit, checking to see that flow of data between units works as expected.
+Acceptance/End to End - Tests that all units, when used together, work as per the feature's specification in as close to an environment as possible to the production environment.
+Note that some programmers use testing terms differently and colloquial usage may differ slightly from these definitions, for the purpose of this course these are the definitions used.
+
+What setup is involved in acceptance testing for a server-rendered web application? In this case, since the browser is the client, our tests should utilize a browser, run the entire application stack (Express application and database), and ensure that the expected behavior is what happens.
+
+One benefit of Agile story writing is that the story provides an outline for the acceptance tests. This outline is in the form of acceptance criteria. Consider the following example of a story sourced from a fictional crowdsourced weather application:
+
+As a guest user, I would like to post a weather observation, so that other people enquiring about the weather have an accurate read on what is going on.
+
+Acceptance Criteria: Given that I have weather data to post and am on the weather observation submission page, When I submit a weather observation using the form, Then I should see the weather observation in the list of all weather observations
+What tests are suggested by this story? In this case, the test should visit the page which contains the form, perhaps something like /observations/new, fill in the form with data, click submit on the form, and see that the new observation is posted to the list of observations. In this lesson we will focus on writing high level tests like this.
+
+The thing we have been hinting at while discussing the elements of acceptance testing based on acceptance criteria is Behavior Driven Development (BDD). This is a gross oversimplification, but BDD can be thought of as an evolution of TDD in which the focus is on using sentences to describe behaviors and implementing tests to match the sentences. We will use BDD as part of the approach to writing test cases.
+
+Let's start by beginning to test a CRUD application from the outside-in using BDD. For this exercise we will create a CRUD application for baseball cards. In this case, a BaseballCard will have a player, team, manufacturer and year.
+
+We will begin by satisfying the following user story:
+
+Given that I visit /baseball_cards Then I see a list of Baseball Cards
+What kind of test cases are suggested by this story? We begin by generating a new Express application:
+
+express baseball_cards
+Next, install the appropriate testing dependencies:
+
+npm install -g protractor
+npm install --save-dev mocha chai protractor
+Now that we have an application skeleton and dependencies are installed, let's begin by creating a directory to house our tests:
+
+mkdir -p test/acceptance
+There is a bit more setup to do for Mocha, Chai and Protractor before we get to writing tests:
+
+// at CLI
+touch test/conf.js
+
+// in test/conf.js
+exports.config ={
+  specs:['acceptance/*.js'],
+  framework: 'mocha',
+  mochaOpts:{
+    reporter: 'spec',
+    slow: 3000,
+    enableTimeouts: false
+  },
+  capabilities:{
+    'browserName': 'chrome'
+  },
+  directConnect: true
+};
+
+// at CLI
+touch test/mocha.opts
+
+// in test/mocha.opts
+--require test/helper
+--recursive
+
+// at CLI
+touch test/helper.js
+
+// in test/helper.js
+process.env.NODE_ENV = 'test';
+global.expect = require('chai').expect;
+Finally, we are ready to make the first test:
+
+// at CLI
+touch test/acceptance/baseball_cards_crud_test.js
+
+// in test/acceptance/baseball_cards_crud_test.js
+require('../helper');
+
+var http = require('http'),
+    server;
+
+before(function() {
+  server = http.createServer(require('../../app'));
+  server.listen(0);
+  browser.baseUrl = 'http://localhost:' + server.address().port;
+});
+
+beforeEach(function() {
+  return browser.ignoreSynchronization = true;
+});
+
+after(function(){
+  server.close();
+});
+
+describe('Baseball card CRUD', function(){
+  describe('Given I visit /baseball_cards', function () {
+    it('Then I see a header indicating it is the Baseball Card Index', function() {
+      browser.get('/baseball_cards');
+      element(by.xpath('//h1')).getText().then(function(text) {
+        expect(text).to.equal('Index of Baseball Cards');
+      });
+    });
+  });
+});
+Satisfying this test should be relatively straight forward, before solving this ask yourself:
+
+What is this failure?
+What are the components of the fix?
+Next, we implement each of the missing components, along the way we can run tests with protractor test/conf.js:
+
+// at CLI
+touch routes/baseball_cards.js
+
+// in routes/baseball_cards.js
+var express = require('express');
+var router = express.Router();
+
+router.get('/', function (req, res) {
+  res.render('baseball_cards/index');
+});
+
+module.exports = router;
+
+// in app.js
+var express = require('express');
+var router = express.Router();
+
+router.get('/', function (req, res) {
+  res.render('baseball_cards/index');
+});
+
+module.exports = router;
+
+// in app.js after
+// app.use('/users', users);
+app.use('/baseball_cards', baseballCardRoutes);
+
+// at CLI
+mkdir views/baseball_cards
+touch views/baseball_cards/index.jade
+
+// in views/baseball_cards/index.jade
+h1 Index of Baseball Cards
+At this point, the test should be passing. But the question is now, is the story complete? Here is the story for reference:
+
+Given that I visit /baseball_cards Then I see a list of Baseball Cards
+We have not yet displayed a list of Baseball Cards. What pieces are involved in this type of test? What kind of setup work must be done?
+
+For this test to work, we will need to introduce a database, we will use MongoDB with Monk. Setup is provided below, but be sure that you are able to explain what each piece does:
+
+// at CLI, kill server, then:
+npm install --save monk mongodb@1.4
+
+mkdir config
+touch config/database.js
+
+// in config/database.js
+var monk = require('monk');
+
+var dbName = 'baseball_cards_' + (process.env.NODE_ENV || 'development');
+module.exports = monk('localhost:27017/' + dbName);
+Next, we need to write a test that involves the database:
+
+// test/acceptance/baseball_cards_crud_test.js
+require('../helper');
+
+var http = require('http'),
+    db = require('../../config/database').get('baseball_cards'),
+    server;
+
+before(function() {
+  server = http.createServer(require('../../app'));
+  server.listen(0);
+  browser.baseUrl = 'http://localhost:' + server.address().port;
+});
+
+beforeEach(function() {
+  db.remove({});
+  return browser.ignoreSynchronization = true;
+});
+
+after(function(){
+  server.close();
+});
+
+describe('Baseball card CRUD', function(){
+  describe('Given I visit /baseball_cards', function () {
+    it('Then I see a header indicating it is the Baseball Card Index', function() {
+      browser.get('/baseball_cards');
+      element(by.xpath('//h1')).getText().then(function(text) {
+        expect(text).to.equal('Index of Baseball Cards');
+      });
+    });
+
+    it('Then I see a listing of Baseball Cards from the database', function (done) {
+      var baseballCardData = {
+        player : 'Honus Wagner',
+        team : 'Pittsburgh Pirates',
+        manufacturer : 'American Tobacco Company',
+        year : '1909'
+      };
+
+      db.insert(baseballCardData).then(function (err, doc) {
+        browser.get('/baseball_cards');
+        element(by.xpath('//ul')).getText().then(function(text) {
+          expect(text).to.equal('Honus Wagner 1909');
+          done();
+        });
+      });
+    });
+  });
+});
+This test fails as expected. In the above code can you identify which calls are synchronous and which are asynchronous?
+
+What pieces are required for the remaining implementation? A sample implementation is provided here for reference:
+
+// in routes/baseball_cards.js
+var express = require('express');
+var router = express.Router();
+var db = require('../config/database').get('baseball_cards');
+
+router.get('/', function (req, res) {
+  db.find({}, function (err, docs) {
+    if (err) res.end(err);
+
+    res.render('baseball_cards/index', {baseball_cards: docs});
+  });
+});
+
+module.exports = router;
+
+// in views/baseball_cards/index.jade
+h1 Index of Baseball Cards
+
+ul
+  for baseball_card in baseball_cards
+    li #{baseball_card.player} #{baseball_card.year}
+Again, the question is, is the story completed? It is provided here for reference:
+
+Given that I visit /baseball_cards Then I see a list of Baseball Cards
+In this case, the work appears to be completed, so we can move on to the next story.
+
+Can you answer these questions:
+
+Why bother with acceptance testing?
+What is the connection between an Agile Story and an acceptance test?
+Exercise: Instructors will distribute code for the stories covered in this lecture, it is your job to satisfy the next story in the CRUD cycle:
+
+Given that I visit /baseball_cards/new When I fill out the form with any data and submit it Then I am redirected to /baseball_cards And I see the card I just created in the Baseball Cards Index
+© 2015 Galvanize, Inc. All Rights Reserved
